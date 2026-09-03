@@ -91,8 +91,8 @@ function execute(opts)
     local z_upper = 1.0 - 0.5
     local z_lower = 1.2 - 0.5
 
-    -- Helper function to add left-aligned embossed/engraved text volume
-    local function add_left_text(text_str, line_h, left_x, y_pos, z_pos)
+    -- Helper function to add left-aligned embossed/engraved text volume centered on target_y
+    local function add_left_text(text_str, line_h, left_x, target_y, z_pos)
         if not text_str or tostring(text_str) == "" then
             return
         end
@@ -106,29 +106,32 @@ function execute(opts)
         local b = text_mesh:bounds()
         local min_x_offset = (b and b.min_x) or 0
         local min_z_offset = (b and b.min_z) or 0
+        -- Center the text mesh vertically around target_y
+        local y_center = (b and b.min_y and b.max_y) and ((b.min_y + b.max_y) / 2.0) or 0
 
         table.insert(other_volumes, {
             mesh = text_mesh,
             type = text_type,
             translate = {
                 x = left_x - min_x_offset,
-                y = y_pos,
+                y = target_y - y_center,
                 z = z_pos - min_z_offset
             }
         })
     end
 
-    -- 2. Line 1: Manufacturer (ALL CAPS, Left-aligned at X = -72.0, Y = 25.4, Line Height = 3.6mm)
-    add_left_text(opts and opts.manufacturer, 3.6, -72.0, 25.4, z_upper)
+    -- 2. Upper Pocket: Y range is 20.0 to 30.0 (Height = 10.0mm, Center Y = 25.0)
+    -- Line 1: Manufacturer (centered at Y = 26.8, Line Height = 3.2mm)
+    add_left_text(opts and opts.manufacturer, 3.2, -72.0, 26.8, z_upper)
 
-    -- 3. Line 2: Filament Name (ALL CAPS, Left-aligned at X = -72.0, Y = 21.0, Line Height = 3.0mm)
-    add_left_text(opts and opts.filament_name, 3.0, -72.0, 21.0, z_upper)
+    -- Line 2: Filament Name (centered at Y = 23.2, Line Height = 2.8mm)
+    add_left_text(opts and opts.filament_name, 2.8, -72.0, 23.2, z_upper)
 
-    -- 4. Line 3: Material Type (ALL CAPS, Left-aligned at X = -72.0, Y = 7.5, Line Height = 6.0mm)
-    -- Aligned left with upper text and centered vertically with the 5-step test frame on its right (Y: 5.0 to 15.0)
-    add_left_text((opts and opts.material_type) or "PLA", 6.0, -72.0, 7.5, z_lower)
+    -- 3. Lower Area: 5-step sample window Y range is 5.0 to 15.0 (Height = 10.0mm, Center Y = 10.0)
+    -- Material Type (perfectly centered vertically with the sample window at Y = 10.0, Line Height = 5.5mm)
+    add_left_text((opts and opts.material_type) or "PLA", 5.5, -72.0, 10.0, z_lower)
 
-    -- 5. Add the combined sample card object to the active build plate
+    -- 4. Add the combined sample card object to the active build plate
     api.project:add_object {
         mesh = base,
         other_volumes = other_volumes
