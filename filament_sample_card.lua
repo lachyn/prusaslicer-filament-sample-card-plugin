@@ -121,15 +121,15 @@ function execute(opts)
     end
 
     -- 2. Upper Pocket: Y range is 20.0 to 30.0 (Height = 10.0mm, Center Y = 25.0)
-    -- Line 1: Manufacturer (centered at Y = 26.8, Line Height = 3.2mm)
-    add_left_text(opts and opts.manufacturer, 3.2, -72.0, 26.8, z_upper)
+    -- Line 1: Manufacturer (centered at Y = 27.0, Line Height increased from 3.2mm -> 3.6mm)
+    add_left_text(opts and opts.manufacturer, 3.6, -72.0, 27.0, z_upper)
 
-    -- Line 2: Filament Name (centered at Y = 23.2, Line Height = 2.8mm)
-    add_left_text(opts and opts.filament_name, 2.8, -72.0, 23.2, z_upper)
+    -- Line 2: Filament Name (centered at Y = 23.0, Line Height increased from 2.8mm -> 3.2mm)
+    add_left_text(opts and opts.filament_name, 3.2, -72.0, 23.0, z_upper)
 
     -- 3. Lower Area: 5-step sample window Y range is 5.0 to 15.0 (Height = 10.0mm, Center Y = 10.0)
-    -- Material Type (perfectly centered vertically with the sample window at Y = 10.0, Line Height = 5.5mm)
-    add_left_text((opts and opts.material_type) or "PLA", 5.5, -72.0, 10.0, z_lower)
+    -- Material Type (centered vertically at Y = 10.0, Line Height increased from 5.5mm -> 6.5mm)
+    add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower)
 
     -- 4. Add the combined sample card object to the active build plate
     api.project:add_object {
