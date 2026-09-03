@@ -6,19 +6,19 @@ info = {
     params = {
         {
             name = "manufacturer",
-            label = "Manufacturer / Brand",
+            label = "Manufacturer / Brand (max ~22 chars)",
             type = "string",
             default = "PRUSAMENT"
         },
         {
             name = "filament_name",
-            label = "Filament Name / Color",
+            label = "Filament Name / Color (max ~25 chars)",
             type = "string",
             default = "GALAXY BLACK"
         },
         {
             name = "material_type",
-            label = "Material Type (e.g. PLA, PETG, TPU, ABS)",
+            label = "Material Type [PLA/PETG/ABS/...] (max 5-6 chars)",
             type = "string",
             default = "PLA"
         },
@@ -92,18 +92,34 @@ function execute(opts)
     local z_lower = 1.2 - 0.5
 
     -- Helper function to add left-aligned embossed/engraved text volume centered on target_y
-    local function add_left_text(text_str, line_h, left_x, target_y, z_pos)
+    -- max_w: maximum allowable width in mm; if text exceeds max_w, line_height is scaled down automatically
+    local function add_left_text(text_str, line_h, left_x, target_y, z_pos, max_w)
         if not text_str or tostring(text_str) == "" then
             return
         end
 
+        local upper_text = string.upper(tostring(text_str))
         local text_mesh = api.emboss_text {
             font = thick_font,
-            text = string.upper(tostring(text_str)),
+            text = upper_text,
             line_height = line_h
         }
 
         local b = text_mesh:bounds()
+        local text_w = (b and b.max_x and b.min_x) and (b.max_x - b.min_x) or 0
+
+        -- Auto-fit: if text is wider than max_w, recalculate with scaled-down line height
+        if max_w and text_w > max_w and text_w > 0 then
+            local scale_factor = max_w / text_w
+            local scaled_line_h = math.max(1.5, line_h * scale_factor)
+            text_mesh = api.emboss_text {
+                font = thick_font,
+                text = upper_text,
+                line_height = scaled_line_h
+            }
+            b = text_mesh:bounds()
+        end
+
         local min_x_offset = (b and b.min_x) or 0
         local min_z_offset = (b and b.min_z) or 0
         -- Center the text mesh vertically around target_y
@@ -120,16 +136,20 @@ function execute(opts)
         })
     end
 
-    -- 2. Upper Pocket: Y range is 20.0 to 30.0 (Height = 10.0mm, Center Y = 25.0)
-    -- Line 1: Manufacturer (centered at Y = 27.0, Line Height increased from 3.2mm -> 3.6mm)
-    add_left_text(opts and opts.manufacturer, 3.6, -72.0, 27.0, z_upper)
+    -- Available widths:
+    -- Upper Pocket: from X = -72.0 to -9.0 -> max_w = 63.0 mm
+    -- Lower Area (before sample window): from X = -72.0 to -43.0 -> max_w = 29.0 mm
 
-    -- Line 2: Filament Name (centered at Y = 23.0, Line Height increased from 2.8mm -> 3.2mm)
-    add_left_text(opts and opts.filament_name, 3.2, -72.0, 23.0, z_upper)
+    -- 2. Upper Pocket: Y range is 20.0 to 30.0 (Height = 10.0mm, Center Y = 25.0)
+    -- Line 1: Manufacturer (centered at Y = 27.0, Line Height = 3.6mm, max width = 63mm)
+    add_left_text(opts and opts.manufacturer, 3.6, -72.0, 27.0, z_upper, 63.0)
+
+    -- Line 2: Filament Name (centered at Y = 23.0, Line Height = 3.2mm, max width = 63mm)
+    add_left_text(opts and opts.filament_name, 3.2, -72.0, 23.0, z_upper, 63.0)
 
     -- 3. Lower Area: 5-step sample window Y range is 5.0 to 15.0 (Height = 10.0mm, Center Y = 10.0)
-    -- Material Type (centered vertically at Y = 10.0, Line Height increased from 5.5mm -> 6.5mm)
-    add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower)
+    -- Material Type (centered vertically at Y = 10.0, Line Height = 6.5mm, max width = 29mm)
+    add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower, 29.0)
 
     -- 4. Add the combined sample card object to the active build plate
     api.project:add_object {
