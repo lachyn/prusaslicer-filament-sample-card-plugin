@@ -43,27 +43,44 @@ function execute(opts)
     
     -- Request the thickest/boldest available font weight for high 3D print contrast
     local function get_thick_font()
-        local candidate_names = {
-            "Arial Black",
-            "Arial-Black",
-            "Impact",
-            "Helvetica-Bold",
-            "Helvetica Bold",
-            "Arial-BoldMT",
+        -- Unified candidate list across Linux, Windows, macOS
+        local candidates = {
+            "FreeSans bold",
+            "FreeSans Bold",
+            "Sans bold",
+            "Sans Bold",
             "Arial Bold",
-            "DIN Alternate Bold",
-            "DINAlternate-Bold",
-            "SF Pro Display Bold",
-            "SF Pro Text Bold",
-            "Helvetica",
-            "Arial"
+            "Arial-Bold",
+            "Arial Black",
+            "Helvetica Bold",
+            "Helvetica-Bold",
+            "Noto Sans bold",
+            "Noto Sans heavy",
+            "Liberation Sans bold",
+            "DejaVu Sans bold",
+            "Segoe UI Bold"
         }
-        for _, name in ipairs(candidate_names) do
+
+        for _, name in ipairs(candidates) do
+            local ok, font = pcall(function() return api.get_font(name) end)
+            if ok and font then
+                local font_name = nil
+                pcall(function() font_name = font.name end)
+                -- PrusaSlicer returns internal "Default font" when a query is not found
+                if font_name and font_name ~= "Default font" then
+                    return font
+                end
+            end
+        end
+
+        -- Direct fallback if font.name property was unavailable
+        for _, name in ipairs(candidates) do
             local ok, font = pcall(function() return api.get_font(name) end)
             if ok and font then
                 return font
             end
         end
+
         return api.get_default_font()
     end
 
