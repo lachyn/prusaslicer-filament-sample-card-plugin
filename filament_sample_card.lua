@@ -73,14 +73,23 @@ function execute(opts)
 
     local other_volumes = {}
 
-    -- Text height in Z axis (exactly 0.5 mm)
-    local text_depth = 0.5
-
-    -- Z height offsets for the card surfaces:
-    -- Upper label cavity floor is at Z = 1.0mm (outer border rim is at Z = 2.2mm)
-    -- Lower info area floor is at Z = 1.2mm
-    local z_upper = is_engrave and (1.0 - text_depth) or 1.0
-    local z_lower = is_engrave and (1.2 - text_depth) or 1.2
+    -- The PrusaSlicer api.emboss_text generates text meshes with a fixed extrusion thickness of 1.0 mm (Z: 0.0 to 1.0).
+    -- Target visible text height / relief: exactly 0.5 mm in the Z axis.
+    -- Card surface heights:
+    --   - Upper label cavity floor is at Z = 1.0 mm (outer border rim is at Z = 2.2 mm).
+    --   - Lower area floor is at Z = 1.2 mm.
+    --
+    -- For raised text (Solid):
+    --   We sink the bottom of the 1.0 mm text mesh 0.5 mm below the floor:
+    --   - Upper: translate Z = 1.0 - 0.5 = 0.5 mm -> mesh spans Z = 0.5 to 1.5 mm (exactly 0.5 mm above the 1.0 mm floor).
+    --   - Lower: translate Z = 1.2 - 0.5 = 0.7 mm -> mesh spans Z = 0.7 to 1.7 mm (exactly 0.5 mm above the 1.2 mm floor).
+    --
+    -- For engraved text (Negative):
+    --   We cut 0.5 mm into the card surface:
+    --   - Upper: translate Z = 1.0 - 0.5 = 0.5 mm -> cuts into Z = [0.5, 1.0] mm (exactly 0.5 mm deep).
+    --   - Lower: translate Z = 1.2 - 0.5 = 0.7 mm -> cuts into Z = [0.7, 1.2] mm (exactly 0.5 mm deep).
+    local z_upper = 1.0 - 0.5
+    local z_lower = 1.2 - 0.5
 
     -- Helper function to add left-aligned embossed/engraved text volume
     local function add_left_text(text_str, line_h, left_x, y_pos, z_pos)
@@ -91,12 +100,12 @@ function execute(opts)
         local text_mesh = api.emboss_text {
             font = thick_font,
             text = string.upper(tostring(text_str)),
-            line_height = line_h,
-            depth = text_depth
+            line_height = line_h
         }
 
         local b = text_mesh:bounds()
         local min_x_offset = (b and b.min_x) or 0
+        local min_z_offset = (b and b.min_z) or 0
 
         table.insert(other_volumes, {
             mesh = text_mesh,
@@ -104,7 +113,7 @@ function execute(opts)
             translate = {
                 x = left_x - min_x_offset,
                 y = y_pos,
-                z = z_pos
+                z = z_pos - min_z_offset
             }
         })
     end
