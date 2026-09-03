@@ -1,0 +1,13 @@
+{
+  "id": "com.github.filament-sample-card",
+  "name": "Filament Sample Card Generator",
+  "version": "1.0.0",
+  "min_slicer_version": "3.0.0",
+  "author": "tomas-blatan",
+  "license": "MIT",
+  "description": "PrusaSlicer 3 Lua plugin to generate custom labeled filament sample cards with stepped opacity test strips.",
+  "category": "Calibration",
+  "required_apis": {
+    "project.plugin": "1.0.0"
+  }
+}
