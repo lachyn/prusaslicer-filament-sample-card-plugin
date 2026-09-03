@@ -109,15 +109,15 @@ function execute(opts)
         })
     end
 
-    -- 2. Line 1: Manufacturer (ALL CAPS, Left-aligned at X = -72.0, Y = 25.0, Line Height = 4.2mm)
-    add_left_text(opts and opts.manufacturer, 4.2, -72.0, 25.0, z_upper)
+    -- 2. Line 1: Manufacturer (ALL CAPS, Left-aligned at X = -72.0, Y = 25.4, Line Height = 3.6mm)
+    add_left_text(opts and opts.manufacturer, 3.6, -72.0, 25.4, z_upper)
 
-    -- 3. Line 2: Filament Name (ALL CAPS, Left-aligned at X = -72.0, Y = 20.8, Line Height = 3.4mm)
-    add_left_text(opts and opts.filament_name, 3.4, -72.0, 20.8, z_upper)
+    -- 3. Line 2: Filament Name (ALL CAPS, Left-aligned at X = -72.0, Y = 21.0, Line Height = 3.0mm)
+    add_left_text(opts and opts.filament_name, 3.0, -72.0, 21.0, z_upper)
 
-    -- 4. Line 3: Material Type (ALL CAPS, Left-aligned at X = -72.0, Y = 6.2, Line Height = 7.0mm)
+    -- 4. Line 3: Material Type (ALL CAPS, Left-aligned at X = -72.0, Y = 7.5, Line Height = 6.0mm)
     -- Aligned left with upper text and centered vertically with the 5-step test frame on its right (Y: 5.0 to 15.0)
-    add_left_text((opts and opts.material_type) or "PLA", 7.0, -72.0, 6.2, z_lower)
+    add_left_text((opts and opts.material_type) or "PLA", 6.0, -72.0, 7.5, z_lower)
 
     -- 5. Add the combined sample card object to the active build plate
     api.project:add_object {
