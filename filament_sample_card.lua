@@ -23,10 +23,28 @@ info = {
             default = "PLA"
         },
         {
+            name = "uppercase",
+            label = "Convert Text to UPPERCASE",
+            type = "bool",
+            default = true
+        },
+        {
             name = "engrave",
             label = "Engrave Text (Cut into card)",
             type = "bool",
             default = false
+        },
+        {
+            name = "optimize_print_params",
+            label = "Optimize Print Settings for Swatch (100% infill, 1 perimeter, slow text)",
+            type = "bool",
+            default = true
+        },
+        {
+            name = "text_extruder",
+            label = "Text Extruder [0 = Default, 2, 3...] (MMU/Multi-color)",
+            type = "int",
+            default = 0
         }
     }
 }
@@ -43,49 +61,82 @@ function execute(opts)
     
     -- Request the thickest/boldest available font weight for high 3D print contrast
     local function get_thick_font()
-        -- Unified candidate list across Linux, Windows, macOS
-        local candidates = {
+        local candidate_names = {
+            -- macOS / Windows heavy weights
+            "Arial Black",
+            "Arial-Black",
+            "Arial Rounded MT Bold",
+            "Trebuchet MS bold",
+            "Verdana bold",
+            "Impact",
+            "Helvetica-Bold",
+            "Helvetica Bold",
+            "Arial-BoldMT",
+            "Arial Bold",
+            "DIN Alternate Bold",
+            "DINAlternate-Bold",
+            "SF Pro Display Bold",
+            "SF Pro Text Bold",
+            -- Linux heavy weights
             "FreeSans bold",
             "FreeSans Bold",
-            "Sans bold",
-            "Sans Bold",
-            "Arial Bold",
-            "Arial-Bold",
-            "Arial Black",
-            "Helvetica Bold",
-            "Helvetica-Bold",
-            "Noto Sans bold",
-            "Noto Sans heavy",
             "Liberation Sans bold",
             "DejaVu Sans bold",
-            "Segoe UI Bold"
+            "Noto Sans bold",
+            "Noto Sans heavy",
+            "Helvetica",
+            "Arial"
         }
 
-        for _, name in ipairs(candidates) do
+        local default_name = nil
+        local ok_def, default_font = pcall(function() return api.get_default_font() end)
+        if ok_def and default_font then
+            pcall(function() default_name = default_font.name end)
+        end
+
+        local probe_name = nil
+        local ok_probe, probe_font = pcall(function() return api.get_font("__nonexistent_probe_font__") end)
+        if ok_probe and probe_font then
+            pcall(function() probe_name = probe_font.name end)
+        end
+
+        local function is_fallback(fn)
+            if not fn then return true end
+            if fn == "NORMAL" or fn == "Default font" then return true end
+            if default_name and fn == default_name then return true end
+            if probe_name and fn == probe_name then return true end
+            return false
+        end
+
+        -- 1. First pass: find a candidate that actually resolved and did not return the fallback font
+        for _, name in ipairs(candidate_names) do
             local ok, font = pcall(function() return api.get_font(name) end)
             if ok and font then
-                local font_name = nil
-                pcall(function() font_name = font.name end)
-                -- PrusaSlicer returns internal "Default font" when a query is not found
-                if font_name and font_name ~= "Default font" then
+                local fn = nil
+                pcall(function() fn = font.name end)
+                if fn and not is_fallback(fn) then
                     return font
                 end
             end
         end
 
-        -- Direct fallback if font.name property was unavailable
-        for _, name in ipairs(candidates) do
+        -- 2. Safety pass: if font.name property was unavailable, return the first candidate directly
+        for _, name in ipairs(candidate_names) do
             local ok, font = pcall(function() return api.get_font(name) end)
             if ok and font then
                 return font
             end
         end
 
-        return api.get_default_font()
+        return default_font or api.get_default_font()
     end
 
     local thick_font = get_thick_font()
     local is_engrave = opts and opts.engrave
+    local is_uppercase = true
+    if opts and opts.uppercase ~= nil then
+        is_uppercase = opts.uppercase
+    end
     local text_type = is_engrave and VolumeType.Negative or VolumeType.Solid
 
     local other_volumes = {}
@@ -108,17 +159,24 @@ function execute(opts)
     local z_upper = 1.0 - 0.5
     local z_lower = 1.2 - 0.5
 
+    -- Helper function to trim whitespace
+    local function trim(s)
+        if not s then return "" end
+        return (tostring(s):gsub("^%s*(.-)%s*$", "%1"))
+    end
+
     -- Helper function to add left-aligned embossed/engraved text volume centered on target_y
     -- max_w: maximum allowable width in mm; if text exceeds max_w, line_height is scaled down automatically
     local function add_left_text(text_str, line_h, left_x, target_y, z_pos, max_w)
-        if not text_str or tostring(text_str) == "" then
+        local cleaned = trim(text_str)
+        if cleaned == "" then
             return
         end
 
-        local upper_text = string.upper(tostring(text_str))
+        local final_text = is_uppercase and string.upper(cleaned) or cleaned
         local text_mesh = api.emboss_text {
             font = thick_font,
-            text = upper_text,
+            text = final_text,
             line_height = line_h
         }
 
@@ -131,7 +189,7 @@ function execute(opts)
             local scaled_line_h = math.max(1.5, line_h * scale_factor)
             text_mesh = api.emboss_text {
                 font = thick_font,
-                text = upper_text,
+                text = final_text,
                 line_height = scaled_line_h
             }
             b = text_mesh:bounds()
@@ -142,7 +200,7 @@ function execute(opts)
         -- Center the text mesh vertically around target_y
         local y_center = (b and b.min_y and b.max_y) and ((b.min_y + b.max_y) / 2.0) or 0
 
-        table.insert(other_volumes, {
+        local vol = {
             mesh = text_mesh,
             type = text_type,
             translate = {
@@ -150,7 +208,14 @@ function execute(opts)
                 y = target_y - y_center,
                 z = z_pos - min_z_offset
             }
-        })
+        }
+
+        -- Multi-material: assign text volume to specific extruder if requested
+        if opts and opts.text_extruder and opts.text_extruder > 0 and text_type == VolumeType.Solid then
+            vol.params = { extruder = opts.text_extruder }
+        end
+
+        table.insert(other_volumes, vol)
     end
 
     -- Available widths:
@@ -168,9 +233,76 @@ function execute(opts)
     -- Material Type (centered vertically at Y = 10.0, Line Height = 6.5mm, max width = 29mm)
     add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower, 29.0)
 
-    -- 4. Add the combined sample card object to the active build plate
-    api.project:add_object {
-        mesh = base,
-        other_volumes = other_volumes
-    }
+    -- 4. Apply optimized print parameters if requested
+    if opts and opts.optimize_print_params ~= false then
+        local ok_bed, bed = pcall(function() return api.project:current_bed() end)
+        if ok_bed and bed then
+            local ok_presets, presets = pcall(function() return bed:print_presets() end)
+            if ok_presets and presets then
+                local print_settings = {
+                    fill_density = "100%",
+                    top_one_perimeter_type = "top",
+                    top_fill_pattern = "monotonic",
+                    bottom_fill_pattern = "monotonic",
+                    small_perimeter_speed = 25
+                }
+                for k, v in pairs(print_settings) do
+                    pcall(function() presets:set(k, v) end)
+                end
+
+                -- only_one_perimeter_first_layer and gap_fill_enabled are NOT set here.
+                -- Both are bool options and set_param's visitor handles only double, int,
+                -- Percentage, FloatOrPercentage and Enum - bool falls into the catch-all
+                -- and is silently ignored, whatever value form is passed ("1", 1, true and
+                -- "true" all behave identically. The old retry loop was 16 no-op calls).
+                -- They need a bool case added upstream in ProjectApi.cpp; until then tick
+                -- them by hand in Print Settings.
+            end
+        end
+    end
+
+    -- 5. Add the combined sample card object to the active build plate
+    -- Provide object-level parameter overrides if supported by the slicer
+    local function try_add_object(extra_params)
+        local opts_to_add = {
+            mesh = base,
+            other_volumes = other_volumes
+        }
+        if extra_params then
+            opts_to_add.object_params = extra_params
+        end
+        return pcall(function() api.project:add_object(opts_to_add) end)
+    end
+
+    if opts and opts.optimize_print_params ~= false then
+        -- NOTE: only_one_perimeter_first_layer must NOT be passed here. set_param has no
+        -- bool branch, so the value is never written - but it still runs
+        -- overrides.enable(name) afterwards. The option is overridable at Object level and
+        -- defaults to false, so passing it activates an object-level override pinned to
+        -- FALSE, which outranks the print preset and disables the setting for this object.
+        local ok = try_add_object({
+            fill_density = "100%"
+        })
+        if not ok then
+            ok = try_add_object({
+                fill_density = "100%"
+            })
+        end
+        if not ok then
+            ok = try_add_object({
+                fill_density = "100%"
+            })
+        end
+        if not ok then
+            api.project:add_object {
+                mesh = base,
+                other_volumes = other_volumes
+            }
+        end
+    else
+        api.project:add_object {
+            mesh = base,
+            other_volumes = other_volumes
+        }
+    end
 end
