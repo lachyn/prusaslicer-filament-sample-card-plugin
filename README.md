@@ -8,6 +8,7 @@ A Lua plugin for **PrusaSlicer 3** that procedurally generates customizable 3D f
 
 - **In-Slicer Generation:** No external CAD or OpenSCAD required.
 - **Customizable:** Manufacturer / Brand, Filament Name / Color, Material Type.
+- **Dual Base Card Selection:** Choose between the standard solid card or a variant with an integrated 8 mm ring hole in the corner for binders and keychains.
 - **Relief Options:** Toggle between solid raised text (0.8 mm relief, 4 solid layers at 0.20 mm) and engraved cutouts (0.5 mm depth).
 - **Cross-Platform Bold Typography & Custom Fonts:** Users can specify any font installed on their system (e.g. `Impact`, `Arial Black`, `DejaVu Sans Bold`), or leave blank to automatically cascade through the boldest available system fonts (`Arial Black`, `Impact` on macOS & Windows, `DejaVu Sans Bold` / `Liberation Sans bold` / `FreeSans bold` on Linux).
 - **Crisp Text Sizing:** Emits text at full, uncompressed line heights for maximum clarity and perimeter fill without blurry downscaling.
@@ -54,6 +55,7 @@ In PrusaSlicer, click **Plugins > Rescan Plugins** (or restart the application).
    - **Manufacturer / Brand:** e.g. `PRUSAMENT` (optional, leave blank for large single-line layout)
    - **Filament Name / Color:** e.g. `GALAXY BLACK`
    - **Material Type:** e.g. `PLA`
+   - **Card with Ring Hole:** `false` (default) for standard solid card, `true` for card with integrated 8 mm corner hole (binder / keychain).
    - **Custom Font Name:** Optional. Specify any font installed on your system (e.g. `Impact`, `Arial Black`, `Segoe UI Bold`, `DejaVu Sans Bold`). Leave blank to automatically use the best bold font.
    - **Convert Text to UPPERCASE:** `true` (default) to force uniform all-caps, or `false` to preserve entered casing.
    - **Engrave Text:** `false` for raised text, `true` for engraved cutouts into card surface.

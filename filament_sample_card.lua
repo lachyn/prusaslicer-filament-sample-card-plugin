@@ -23,6 +23,12 @@ info = {
             default = "PLA"
         },
         {
+            name = "ring_hole",
+            label = "Card with Ring Hole (for binder / keychain)",
+            type = "bool",
+            default = false
+        },
+        {
             name = "font_name",
             label = "Custom Font Name (blank = Auto-Bold)",
             type = "string",
@@ -62,13 +68,16 @@ local function trim(s)
 end
 
 function execute(opts)
-    -- 1. Load the clean blank sample card base model
+    -- 1. Load the clean blank sample card base model (standard or with ring hole)
+    local has_ring_hole = (opts and opts.ring_hole == true)
+    local stl_file = has_ring_hole and "assets/sample_card_ring.stl" or "assets/sample_card_blank.stl"
+    local fallback_stl = has_ring_hole and "sample_card_ring.stl" or "sample_card_blank.stl"
     local base = nil
-    local ok_base, loaded_base = pcall(function() return api.load_stl("assets/sample_card_blank.stl") end)
+    local ok_base, loaded_base = pcall(function() return api.load_stl(stl_file) end)
     if ok_base and loaded_base then
         base = loaded_base
     else
-        base = api.load_stl("sample_card_blank.stl")
+        base = api.load_stl(fallback_stl)
     end
     
     -- Request the thickest/boldest available font weight for high 3D print contrast
@@ -256,8 +265,15 @@ function execute(opts)
     end
 
     -- 3. Lower Area: 5-step sample window Y range is 5.0 to 15.0 (Height = 10.0mm, Center Y = 10.0)
-    -- Material Type (centered vertically at Y = 10.0, Line Height = 6.5mm)
-    add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower)
+    -- Material Type (centered vertically at Y = 10.0)
+    if has_ring_hole then
+        -- Ring card: 8mm hole outer bevel ends at X ~ -67.5 mm; steps start at X = -41.0 mm
+        -- Place text at X = -65.0 mm with full 6.5 mm line height matching standard card
+        add_left_text((opts and opts.material_type) or "PLA", 6.5, -65.0, 10.0, z_lower)
+    else
+        -- Standard card: full left pocket available from X = -72.0 mm with line height 6.5 mm
+        add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower)
+    end
 
     -- 4. Apply optimized print parameters if requested
     if opts and opts.optimize_print_params ~= false then
