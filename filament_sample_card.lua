@@ -23,6 +23,12 @@ info = {
             default = "PLA"
         },
         {
+            name = "font_name",
+            label = "Custom Font Name (blank = Auto-Bold)",
+            type = "string",
+            default = ""
+        },
+        {
             name = "uppercase",
             label = "Convert Text to UPPERCASE",
             type = "bool",
@@ -49,6 +55,12 @@ info = {
     }
 }
 
+-- Helper function to trim whitespace
+local function trim(s)
+    if not s then return "" end
+    return (tostring(s):gsub("^%s*(.-)%s*$", "%1"))
+end
+
 function execute(opts)
     -- 1. Load the clean blank sample card base model
     local base = nil
@@ -62,27 +74,44 @@ function execute(opts)
     -- Request the thickest/boldest available font weight for high 3D print contrast
     local function get_thick_font()
         local candidate_names = {
-            -- macOS / Windows heavy weights
+            -- macOS / Windows heavy weights (highest 3D print contrast & thick stroke perimeters)
             "Arial Black",
             "Arial-Black",
+            "Impact",
+            "Segoe UI Black",
             "Arial Rounded MT Bold",
             "Trebuchet MS bold",
+            "Trebuchet MS:style=Bold",
+            "Trebuchet MS Bold",
             "Verdana bold",
-            "Impact",
+            "Verdana:style=Bold",
+            "Verdana Bold",
+            "Segoe UI:style=Bold",
+            "Segoe UI Bold",
             "Helvetica-Bold",
             "Helvetica Bold",
             "Arial-BoldMT",
             "Arial Bold",
+            "Arial:style=Bold",
             "DIN Alternate Bold",
             "DINAlternate-Bold",
             "SF Pro Display Bold",
             "SF Pro Text Bold",
             -- Linux heavy weights
+            "FreeSans:style=Bold",
             "FreeSans bold",
             "FreeSans Bold",
+            "Liberation Sans:style=Bold",
             "Liberation Sans bold",
+            "Liberation Sans Bold",
+            "DejaVu Sans:style=Bold",
             "DejaVu Sans bold",
+            "DejaVu Sans Bold",
+            "Ubuntu:style=Bold",
+            "Ubuntu Bold",
+            "Noto Sans:style=Bold",
             "Noto Sans bold",
+            "Noto Sans Bold",
             "Noto Sans heavy",
             "Helvetica",
             "Arial"
@@ -106,6 +135,19 @@ function execute(opts)
             if default_name and fn == default_name then return true end
             if probe_name and fn == probe_name then return true end
             return false
+        end
+
+        -- Check user-specified custom font first if provided
+        if opts and opts.font_name and trim(opts.font_name) ~= "" then
+            local user_cand = trim(opts.font_name)
+            local ok_u, user_f = pcall(function() return api.get_font(user_cand) end)
+            if ok_u and user_f then
+                local fn = nil
+                pcall(function() fn = user_f.name end)
+                if not fn or not is_fallback(fn) then
+                    return user_f
+                end
+            end
         end
 
         -- 1. First pass: find a candidate that actually resolved and did not return the fallback font
@@ -142,32 +184,24 @@ function execute(opts)
     local other_volumes = {}
 
     -- The PrusaSlicer api.emboss_text generates text meshes with a fixed extrusion thickness of 1.0 mm (Z: 0.0 to 1.0).
-    -- Target visible text height / relief: exactly 0.5 mm in the Z axis.
+    -- Target visible text relief for raised text: 0.8 mm in Z (4 solid printed layers at 0.20 mm).
+    -- Target engraved text depth: 0.5 mm in Z (cuts 0.5 mm into floor).
     -- Card surface heights:
     --   - Upper label cavity floor is at Z = 1.0 mm (outer border rim is at Z = 2.2 mm).
     --   - Lower area floor is at Z = 1.2 mm.
     --
     -- For raised text (Solid):
-    --   We sink the bottom of the 1.0 mm text mesh 0.5 mm below the floor:
-    --   - Upper: translate Z = 1.0 - 0.5 = 0.5 mm -> mesh spans Z = 0.5 to 1.5 mm (exactly 0.5 mm above the 1.0 mm floor).
-    --   - Lower: translate Z = 1.2 - 0.5 = 0.7 mm -> mesh spans Z = 0.7 to 1.7 mm (exactly 0.5 mm above the 1.2 mm floor).
+    --   - Upper: translate Z = 1.0 - 0.2 = 0.8 mm -> mesh spans Z = [0.8, 1.8] mm (0.8 mm relief, 0.4 mm below outer rim).
+    --   - Lower: translate Z = 1.2 - 0.2 = 1.0 mm -> mesh spans Z = [1.0, 2.0] mm (0.8 mm relief, 0.2 mm below outer rim).
     --
     -- For engraved text (Negative):
-    --   We cut 0.5 mm into the card surface:
-    --   - Upper: translate Z = 1.0 - 0.5 = 0.5 mm -> cuts into Z = [0.5, 1.0] mm (exactly 0.5 mm deep).
-    --   - Lower: translate Z = 1.2 - 0.5 = 0.7 mm -> cuts into Z = [0.7, 1.2] mm (exactly 0.5 mm deep).
-    local z_upper = 1.0 - 0.5
-    local z_lower = 1.2 - 0.5
-
-    -- Helper function to trim whitespace
-    local function trim(s)
-        if not s then return "" end
-        return (tostring(s):gsub("^%s*(.-)%s*$", "%1"))
-    end
+    --   - Upper: translate Z = 1.0 - 0.5 = 0.5 mm -> cuts into Z = [0.5, 1.0] mm (0.5 mm deep into floor).
+    --   - Lower: translate Z = 1.2 - 0.5 = 0.7 mm -> cuts into Z = [0.7, 1.2] mm (0.5 mm deep into floor).
+    local z_upper = is_engrave and (1.0 - 0.5) or (1.0 - 0.2)
+    local z_lower = is_engrave and (1.2 - 0.5) or (1.2 - 0.2)
 
     -- Helper function to add left-aligned embossed/engraved text volume centered on target_y
-    -- max_w: maximum allowable width in mm; if text exceeds max_w, line_height is scaled down automatically
-    local function add_left_text(text_str, line_h, left_x, target_y, z_pos, max_w)
+    local function add_left_text(text_str, line_h, left_x, target_y, z_pos)
         local cleaned = trim(text_str)
         if cleaned == "" then
             return
@@ -181,20 +215,6 @@ function execute(opts)
         }
 
         local b = text_mesh:bounds()
-        local text_w = (b and b.max_x and b.min_x) and (b.max_x - b.min_x) or 0
-
-        -- Auto-fit: if text is wider than max_w, recalculate with scaled-down line height
-        if max_w and text_w > max_w and text_w > 0 then
-            local scale_factor = max_w / text_w
-            local scaled_line_h = math.max(1.5, line_h * scale_factor)
-            text_mesh = api.emboss_text {
-                font = thick_font,
-                text = final_text,
-                line_height = scaled_line_h
-            }
-            b = text_mesh:bounds()
-        end
-
         local min_x_offset = (b and b.min_x) or 0
         local min_z_offset = (b and b.min_z) or 0
         -- Center the text mesh vertically around target_y
@@ -218,20 +238,26 @@ function execute(opts)
         table.insert(other_volumes, vol)
     end
 
-    -- Available widths:
-    -- Upper Pocket: from X = -72.0 to -9.0 -> max_w = 63.0 mm
-    -- Lower Area (before sample window): from X = -72.0 to -43.0 -> max_w = 29.0 mm
-
     -- 2. Upper Pocket: Y range is 20.0 to 30.0 (Height = 10.0mm, Center Y = 25.0)
-    -- Line 1: Manufacturer (centered at Y = 27.0, Line Height = 3.6mm, max width = 63mm)
-    add_left_text(opts and opts.manufacturer, 3.6, -72.0, 27.0, z_upper, 63.0)
+    local has_manufacturer = (trim(opts and opts.manufacturer) ~= "")
+    local has_filament = (trim(opts and opts.filament_name) ~= "")
 
-    -- Line 2: Filament Name (centered at Y = 23.0, Line Height = 3.2mm, max width = 63mm)
-    add_left_text(opts and opts.filament_name, 3.2, -72.0, 23.0, z_upper, 63.0)
+    if has_manufacturer and has_filament then
+        -- Line 1: Manufacturer (centered at Y = 27.2, Line Height = 4.0mm)
+        add_left_text(opts.manufacturer, 4.0, -72.0, 27.2, z_upper)
+        -- Line 2: Filament Name (centered at Y = 22.8, Line Height = 3.8mm)
+        add_left_text(opts.filament_name, 3.8, -72.0, 22.8, z_upper)
+    elseif has_filament then
+        -- Single-line layout for filament name (centered at Y = 25.0, Line Height = 5.2mm)
+        add_left_text(opts.filament_name, 5.2, -72.0, 25.0, z_upper)
+    elseif has_manufacturer then
+        -- Single-line layout for brand name (centered at Y = 25.0, Line Height = 5.2mm)
+        add_left_text(opts.manufacturer, 5.2, -72.0, 25.0, z_upper)
+    end
 
     -- 3. Lower Area: 5-step sample window Y range is 5.0 to 15.0 (Height = 10.0mm, Center Y = 10.0)
-    -- Material Type (centered vertically at Y = 10.0, Line Height = 6.5mm, max width = 29mm)
-    add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower, 29.0)
+    -- Material Type (centered vertically at Y = 10.0, Line Height = 6.5mm)
+    add_left_text((opts and opts.material_type) or "PLA", 6.5, -72.0, 10.0, z_lower)
 
     -- 4. Apply optimized print parameters if requested
     if opts and opts.optimize_print_params ~= false then
@@ -244,7 +270,7 @@ function execute(opts)
                     top_one_perimeter_type = "top",
                     top_fill_pattern = "monotonic",
                     bottom_fill_pattern = "monotonic",
-                    small_perimeter_speed = 25
+                    small_perimeter_speed = 15
                 }
                 for k, v in pairs(print_settings) do
                     pcall(function() presets:set(k, v) end)
